@@ -57,53 +57,52 @@ def load_data(path, name='BlogCatalog',exp_id='0',original_X = False, extra_str=
 
 
 def wasserstein(x, y, p=0.5, lam=10, its=10, sq=False, backpropT=False, cuda=False):
-    """Return W dist between x and y"""
-    device = x.device  # Get the device from input tensor x
+    """Return Wasserstein distance between x and y using the Sinkhorn algorithm."""
+    device = x.device  # Ensure device consistency.
 
     nx = x.shape[0]
     ny = y.shape[0]
- 
+    
     x = x.squeeze()
     y = y.squeeze()
     
-    M = pdist(x, y)  # Assuming pdist handles device correctly based on x and y
+    M = pdist(x, y)  # Calculate pairwise distance matrix.
 
-    '''estimate lambda and delta'''
+    '''Estimate lambda and delta'''
     M_mean = torch.mean(M)
-    M_drop = F.dropout(M, 10.0 / (nx * ny))
+    M_drop = F.dropout(M, 10.0 / (nx * ny), training=False)
     delta = torch.max(M_drop).detach()
     eff_lam = (lam / M_mean).detach()
 
-    '''compute new distance matrix'''
-    row = delta * torch.ones(M[0:1, :].shape, device=device)  # Ensure device is specified
+    '''Compute new distance matrix with augmented row and column for slack variable'''
+    row = delta * torch.ones(M[0:1, :].shape, device=device)
     col = torch.cat([delta * torch.ones(M[:, 0:1].shape, device=device), torch.zeros((1, 1), device=device)], 0)
     Mt = torch.cat([M, row], 0)
     Mt = torch.cat([Mt, col], 1)
 
-    '''compute marginal'''
+    '''Compute marginals'''
     a = torch.cat([p * torch.ones((nx, 1), device=device) / nx, (1-p) * torch.ones((1, 1), device=device)], 0)
     b = torch.cat([(1-p) * torch.ones((ny, 1), device=device) / ny, p * torch.ones((1, 1), device=device)], 0)
 
-    '''compute kernel'''
+    '''Compute kernel'''
     Mlam = eff_lam * Mt
     temp_term = torch.ones(1, device=device) * 1e-6
     K = torch.exp(-Mlam) + temp_term
     U = K * Mt
     ainvK = K / a
 
-    u = a
+    u = torch.ones_like(a)  # Initialize u
 
-    for i in range(its):
-        u = 1.0 / (ainvK.matmul(b / torch.transpose(torch.transpose(u, 0, 1), 0, 1)))
-    v = b / (torch.transpose(torch.transpose(u, 0, 1), 0, 1).matmul(K))
+    for _ in range(its):
+        v = b / (K.t().matmul(u))
+        u = a / (K.matmul(v))
 
-    upper_t = u * (torch.transpose(v, 0, 1) * K).detach()
-
+    '''Calculate the transport plan and distance'''
+    upper_t = u * (v.t() * K).detach()  # Correct matrix multiplication for computing the transport plan
     E = upper_t * Mt
-    D = 2 * torch.sum(E)
+    D = 2 * torch.sum(E)  # Calculate the Wasserstein distance
 
     return D, Mlam
-
 
 def pdist(sample_1, sample_2, norm=2, eps=1e-5):
     """Compute the matrix of all squared pairwise distances.

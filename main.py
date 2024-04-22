@@ -81,10 +81,6 @@ def train(epoch, data, idx_train, idx_val, model, optimizer):
     output = model(data)
     yf_pred, rep, p1 = output
 
-    print("Shape of rep:", rep.shape)  # Debugging size of representations
-    print("Treatment tensor (T):", data.t[idx_train])  # Inspect treatment tensor
-
-
     rep_t1, rep_t0 = rep[idx_train][(data.t[idx_train] > 0).nonzero(as_tuple=True)], rep[idx_train][(data.t[idx_train] < 1).nonzero(as_tuple=True)]
     dist, _ = utils.wasserstein(rep_t1, rep_t0, cuda=args.cuda)
 
@@ -116,7 +112,7 @@ def eva(data, idx_train, idx_test, model, args):
     # Propagate the data through the model
     output = model(data)
     yf_pred, rep, p1 = output  # p1 can be used as propensity scores
-    ycf_pred, _, _ = model(data.x, data.edge_index, 1 - data.t)
+    ycf_pred, _, _ = model(data)
 
     # Get the actual outcomes from the data object
     YF = torch.where(data.t > 0, data.y[:, 0], data.y[:, 1])
@@ -129,10 +125,15 @@ def eva(data, idx_train, idx_test, model, args):
     else:
         y1_pred, y0_pred = yf_pred, ycf_pred
 
-    # Calculate PEHE
-    pehe_ts = torch.sqrt(torch.mean((y1_pred - y0_pred)[idx_test] - (YF - YCF)[idx_test])**2)
-    # Calculate MAE of ATE
-    mae_ate_ts = torch.abs(torch.mean((y1_pred - y0_pred)[idx_test]) - torch.mean((YF - YCF)[idx_test]))
+    # Calculate PEHE (Precision in Estimation of Heterogeneous Effects)
+    predicted_effects = y1_pred[idx_test] - y0_pred[idx_test]
+    true_effects = (YF - YCF)[idx_test]
+    pehe_ts = torch.sqrt(torch.mean((predicted_effects - true_effects) ** 2))
+
+    # Calculate MAE of ATE (Mean Absolute Error of Average Treatment Effect)
+    predicted_ate = torch.mean(predicted_effects)
+    true_ate = torch.mean(true_effects)
+    mae_ate_ts = torch.abs(predicted_ate - true_ate)
 
     print("Test set results:",
           "pehe_ts= {:.4f}".format(pehe_ts.item()),
