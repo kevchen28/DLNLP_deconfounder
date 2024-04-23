@@ -7,25 +7,37 @@ from torch_geometric.data import Data
 from models.netdeconf import GCN_DECONF
 import utils
 import csv
+import os
+import pandas as pd
 
 # Training settings
 parser = argparse.ArgumentParser()
-parser.add_argument('--nocuda', type=int, default=0, help='Disables CUDA training.')
-parser.add_argument('--dataset', type=str, default='BlogCatalog')
-parser.add_argument('--extrastr', type=str, default='')
-parser.add_argument('--seed', type=int, default=42, help='Random seed.')
-parser.add_argument('--epochs', type=int, default=200, help='Number of epochs to train.')
-parser.add_argument('--lr', type=float, default=1e-2, help='Initial learning rate.')
-parser.add_argument('--weight_decay', type=float, default=1e-5, help='Weight decay (L2 loss on parameters).')
-parser.add_argument('--hidden', type=int, default=100, help='Number of hidden units.')
-parser.add_argument('--dropout', type=float, default=0.1, help='Dropout rate (1 - keep probability).')
-parser.add_argument('--alpha', type=float, default=1e-4, help='trade-off of representation balancing.')
-parser.add_argument('--clip', type=float, default=100., help='gradient clipping')
-parser.add_argument('--nout', type=int, default=2)
-parser.add_argument('--nin', type=int, default=2)
-parser.add_argument('--tr', type=float, default=0.6)
-parser.add_argument('--path', type=str, default='./datasets/')
-parser.add_argument('--normy', type=int, default=1)
+parser.add_argument("--nocuda", type=int, default=0, help="Disables CUDA training.")
+parser.add_argument("--dataset", type=str, default="BlogCatalog")
+parser.add_argument("--seed", type=int, default=42, help="Random seed.")
+parser.add_argument(
+    "--epochs", type=int, default=200, help="Number of epochs to train."
+)
+parser.add_argument("--lr", type=float, default=1e-2, help="Initial learning rate.")
+parser.add_argument(
+    "--weight_decay",
+    type=float,
+    default=1e-5,
+    help="Weight decay (L2 loss on parameters).",
+)
+parser.add_argument("--hidden", type=int, default=100, help="Number of hidden units.")
+parser.add_argument(
+    "--dropout", type=float, default=0.1, help="Dropout rate (1 - keep probability)."
+)
+parser.add_argument(
+    "--alpha", type=float, default=1e-4, help="trade-off of representation balancing."
+)
+parser.add_argument("--clip", type=float, default=100.0, help="gradient clipping")
+parser.add_argument("--nout", type=int, default=2, help="Number of output layers.")
+parser.add_argument("--nin", type=int, default=2, help="Number of input layers.")
+parser.add_argument("--tr", type=float, default=0.6, help="train ratio.")
+parser.add_argument("--path", type=str, default="./datasets/")
+parser.add_argument("--norm", type=bool, default=True, help="Normalize the outcomes.")
 
 args = parser.parse_args()
 args.cuda = not args.nocuda and torch.cuda.is_available()
@@ -41,21 +53,48 @@ alpha = torch.tensor([args.alpha], device=device, dtype=torch.float32)
 if args.cuda:
     torch.cuda.manual_seed(args.seed)
 
+
 def prepare(i_exp):
+    """
+    Prepare the data and model for training.
+
+    Args:
+        i_exp (int): The experiment number (used for reproducibility purposes).
+
+    Returns:
+        Data: The PyTorch Geometric data object containing the input data.
+        torch.LongTensor: The indices of the training data.
+        torch.LongTensor: The indices of the validation data.
+        torch.LongTensor: The indices of the test data.
+        torch.nn.Module: Network Deconfounder model.
+        torch.optim.Optimizer: The optimizer used for training.
+    """
+
     # Load data and init models
-    X, A, T, Y1, Y0 = utils.load_data(args.path, name=args.dataset, original_X=False, exp_id=str(i_exp), extra_str=args.extrastr)
+    X, A, T, Y1, Y0 = utils.load_data(
+        args.path,
+        name=args.dataset,
+        original_X=False,
+        exp_id=str(i_exp),
+    )
+
+    # Split data into train, validation, and test sets
     n = X.shape[0]
     n_train = int(n * args.tr)
     n_test = int(n * 0.2)
-    # n_valid = n_test
 
     idx = np.random.permutation(n)
-    idx_train, idx_test, idx_val = idx[:n_train], idx[n_train:n_train+n_test], idx[n_train+n_test:]
+    idx_train, idx_test, idx_val = (
+        idx[:n_train],
+        idx[n_train : n_train + n_test],
+        idx[n_train + n_test :],
+    )
     idx_train = torch.LongTensor(idx_train).to(device)
     idx_val = torch.LongTensor(idx_val).to(device)
     idx_test = torch.LongTensor(idx_test).to(device)
 
-    X = utils.normalize(X) #row-normalize
+    # Normalize the input features and convert them to PyTorch tensors
+    X = utils.normalize(X)  # row-normalize
     X = torch.FloatTensor(X.toarray()).to(device)
     Y1 = torch.FloatTensor(np.squeeze(Y1)).to(device)
     Y0 = torch.FloatTensor(np.squeeze(Y0)).to(device)
@@ -65,102 +104,260 @@ def prepare(i_exp):
     edge_index = torch.LongTensor(edge_index).to(device)
     edge_weight = torch.FloatTensor(edge_weight).to(device)
 
-    data = Data(x=X, edge_index=edge_index, edge_attr=edge_weight, y=torch.stack((Y0, Y1), dim=1), t=T)
+    # Create a PyTorch Geometric data object
+    data = Data(
+        x=X,
+        edge_index=edge_index,
+        edge_attr=edge_weight,
+        y=torch.stack((Y0, Y1), dim=1),
+        t=T,
+    )
 
-    model = GCN_DECONF(nfeat=X.shape[1], nhid=args.hidden, dropout=args.dropout, n_out=args.nout, n_in=args.nin, cuda=args.cuda).to(device)
+    # Initialize the model and optimizer
+    model = GCN_DECONF(
+        nfeat=X.shape[1],
+        nhid=args.hidden,
+        dropout=args.dropout,
+        n_out=args.nout,
+        n_in=args.nin,
+        cuda=args.cuda,
+    ).to(device)
 
-    optimizer = optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+    optimizer = optim.Adam(
+        model.parameters(), lr=args.lr, weight_decay=args.weight_decay
+    )
 
     return data, idx_train, idx_val, idx_test, model, optimizer
 
+
 def train(epoch, data, idx_train, idx_val, model, optimizer):
+    """
+    Main training loop for the model.
+
+    Args:
+        epoch (int): The current epoch number.
+        data (Data): The PyTorch Geometric data object containing the input data.
+        idx_train (torch.LongTensor): The indices of the training data.
+        idx_val (torch.LongTensor): The indices of the validation data.
+        model (torch.nn.Module): Network Deconfounder model.
+        optimizer (torch.optim.Optimizer): The optimizer used for training.
+    """
     t = time.time()
     model.train()
     optimizer.zero_grad()
 
+    # Propagate the data through the model
     output = model(data)
-    yf_pred, rep, p1 = output
+    yf_pred, rep, _ = output
 
-    rep_t1, rep_t0 = rep[idx_train][(data.t[idx_train] > 0).nonzero(as_tuple=True)], rep[idx_train][(data.t[idx_train] < 1).nonzero(as_tuple=True)]
+    # Calculate the Wasserstein distance between the representations of treated and control units
+    rep_t1, rep_t0 = (
+        rep[idx_train][(data.t[idx_train] > 0).nonzero(as_tuple=True)],
+        rep[idx_train][(data.t[idx_train] < 1).nonzero(as_tuple=True)],
+    )
     dist, _ = utils.wasserstein(rep_t1, rep_t0, cuda=args.cuda)
 
-    YF = torch.where(data.t > 0, data.y[:, 0], data.y[:, 1])
-    # YCF = torch.where(T>0,Y0,Y1)
+    YF = torch.where(data.t > 0, data.y[:, 0], data.y[:, 1])  # Factual outcomes
 
-    if args.normy:
+    # Normalize the outcomes if required
+    if args.norm:
         ym, ys = torch.mean(YF[idx_train]), torch.std(YF[idx_train])
         YFtr, YFva = (YF[idx_train] - ym) / ys, (YF[idx_val] - ym) / ys
     else:
         YFtr = YF[idx_train]
         YFva = YF[idx_val]
 
+    # Calculate the loss
     loss_train = loss(yf_pred[idx_train], YFtr) + alpha * dist
     torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip)
     loss_train.backward()
     optimizer.step()
 
-    if epoch % 10 == 0:
+    # Print the training loss every few epochs
+    print_every = (
+        50 if args.epochs in [200, 300, 400] else 20 if args.epochs == 100 else 100
+    )
+    if epoch % print_every == 0:
         loss_val = loss(yf_pred[idx_val], YFva) + alpha * dist
 
-        print('Epoch: {:04d}'.format(epoch+1),
-              'loss_train: {:.4f}'.format(loss_train.item()),
-              'loss_val: {:.4f}'.format(loss_val.item()),
-              'time: {:.4f}s'.format(time.time() - t))
+        print(
+            "Epoch: {:4d}".format(epoch + 1),
+            "Train loss: {:.4f}".format(loss_train.item()),
+            "Val loss: {:.4f}".format(loss_val.item()),
+        )
+
 
 def eva(data, idx_train, idx_test, model, args):
+    """
+    Main evaluation loop for the model.
+
+    Args:
+        data (Data): The PyTorch Geometric data object containing the input data.
+        idx_train (torch.LongTensor): The indices of the training data.
+        idx_test (torch.LongTensor): The indices of the test data.
+        model (torch.nn.Module): Network Deconfounder model.
+        args (argparse.Namespace): The command-line arguments.
+
+    Returns:
+        pd.DataFrame: A pandas DataFrame containing the evaluation results.
+    """
+    # store_results_dict = {}
     model.eval()
+
     # Propagate the data through the model
-    output = model(data)
-    yf_pred, rep, p1 = output  # p1 can be used as propensity scores
-    ycf_pred, _, _ = model(data)
+    yf_pred, _, _ = model(data)
+    ycf_pred, _, _ = model(data, cf=True)
 
     # Get the actual outcomes from the data object
-    YF = torch.where(data.t > 0, data.y[:, 0], data.y[:, 1])
-    YCF = torch.where(data.t > 0, data.y[:, 1], data.y[:, 0])
+    YF = torch.where(data.t > 0, data.y[:, 1], data.y[:, 0])
+    YCF = torch.where(data.t > 0, data.y[:, 0], data.y[:, 1])
+
+    ym, ys = torch.mean(YF[idx_train]), torch.std(YF[idx_train]) # Mean and std of YF in the training set
+
+    y1_pred, y0_pred = torch.where(data.t > 0, yf_pred, ycf_pred), torch.where(
+        data.t > 0, ycf_pred, yf_pred
+    )  # Predicted outcomes
 
     # Normalize the outputs if required
-    if args.normy:
-        ym, ys = torch.mean(YF[idx_train]), torch.std(YF[idx_train])
-        y1_pred, y0_pred = (yf_pred * ys + ym), (ycf_pred * ys + ym)
-    else:
-        y1_pred, y0_pred = yf_pred, ycf_pred
+    if args.norm:
+        y1_pred, y0_pred = (y1_pred * ys + ym), (y0_pred * ys + ym)
 
     # Calculate PEHE (Precision in Estimation of Heterogeneous Effects)
-    predicted_effects = y1_pred[idx_test] - y0_pred[idx_test]
-    true_effects = (YF - YCF)[idx_test]
-    pehe_ts = torch.sqrt(torch.mean((predicted_effects - true_effects) ** 2))
-
     # Calculate MAE of ATE (Mean Absolute Error of Average Treatment Effect)
-    predicted_ate = torch.mean(predicted_effects)
-    true_ate = torch.mean(true_effects)
-    mae_ate_ts = torch.abs(predicted_ate - true_ate)
+    predicted_effects = (y1_pred - y0_pred)[idx_test]  # Predicted treatment effects
+    true_effects = (data.y[:, 1] - data.y[:, 0])[idx_test]  # True treatment effects
+    temp_loss = loss(
+        predicted_effects, true_effects
+    )  # Loss between predicted and true treatment effects
 
-    print("Test set results:",
-          "pehe_ts= {:.4f}".format(pehe_ts.item()),
-          "mae_ate_ts= {:.4f}".format(mae_ate_ts.item()))
+    pehe_ts = torch.sqrt(temp_loss)  # PEHE
+    mae_ate_ts = torch.abs(
+        torch.mean(predicted_effects) - torch.mean(true_effects)
+    )  # MAE of ATE
+
+    print(
+        "Test set results:",
+        "pehe_ts= {:.4f}".format(pehe_ts.item()),
+        "mae_ate_ts= {:.4f}".format(mae_ate_ts.item()),
+    )
+
+    # store_results_dict["tr"] = args.tr
+    # store_results_dict["hidden"] = args.hidden
+    # store_results_dict["dropout"] = args.dropout
+    # store_results_dict["epochs"] = args.epochs
+    # store_results_dict["weight_decay"] = args.weight_decay
+    # store_results_dict["nout"] = args.nout
+    # store_results_dict["nin"] = args.nin
+    # store_results_dict["alpha"] = args.alpha
+    # store_results_dict["pehe_ts"] = pehe_ts.item()
+    # store_results_dict["mae_ate_ts"] = mae_ate_ts.item()
+
+    # store_results_df = pd.DataFrame(store_results_dict, index=[0])
 
     # Handle output file path and write results
-    of_path = './new_results/' + args.dataset + args.extrastr + '/' + str(args.tr)
-    of_path += ('lr'+str(args.lr) if args.lr != 1e-2 else '') + \
-               ('hid'+str(args.hidden) if args.hidden != 100 else '') + \
-               ('do'+str(args.dropout) if args.dropout != 0.5 else '') + \
-               ('ep'+str(args.epochs) if args.epochs != 50 else '') + \
-               ('lbd'+str(args.weight_decay) if args.weight_decay != 1e-5 else '') + \
-               ('nout'+str(args.nout) if args.nout != 1 else '') + \
-               ('alp'+str(args.alpha) if args.alpha != 1e-5 else '') + \
-               ('normy' if args.normy == 1 else '') + '.csv'
+    of_path = "./new_results/" + args.dataset + "/"
+    of_path += (
+        ("tr" + str(args.tr))
+        + ("_lr" + str(args.lr))
+        + ("_hid" + str(args.hidden))
+        + ("_drop" + str(args.dropout))
+        + ("_ep" + str(args.epochs))
+        + ("_wd" + str(args.weight_decay))
+        + ("_nin" + str(args.nin))
+        + ("_nout" + str(args.nout))
+        + ("_alp" + str(args.alpha))
+        + ".csv"
+    )
 
-    with open(of_path, 'a') as of:
+    if not os.path.exists("./new_results/" + args.dataset + "/"):
+        os.makedirs("./new_results/" + args.dataset + "/")
+
+    with open(of_path, "a") as of:
         wrt = csv.writer(of)
-        wrt.writerow([pehe_ts.item(), mae_ate_ts.item()])
+        wrt.writerow(
+            [
+                args.tr,
+                args.hidden,
+                args.dropout,
+                args.epochs,
+                args.weight_decay,
+                args.nin,
+                args.nout,
+                args.alpha,
+                pehe_ts.item(),
+                mae_ate_ts.item(),
+            ]
+        )
 
 
-if __name__ == '__main__':
-    for i_exp in range(0,10):
+if __name__ == "__main__":
+    # results_df = pd.DataFrame(
+    #     columns=[
+    #         "tr",
+    #         "hidden",
+    #         "dropout",
+    #         "epochs",
+    #         "weight_decay",
+    #         "nout",
+    #         "nin",
+    #         "alpha",
+    #         "pehe_ts",
+    #         "mae_ate_ts",
+    #     ]
+    # )
+    # results_mean_df = results_df.copy()
+
+    final_time = time.time()
+
+    for i_exp in range(0, 10):
         data, idx_train, idx_val, idx_test, model, optimizer = prepare(i_exp)
         t_total = time.time()
+
+        # Train the model
         for epoch in range(args.epochs):
             train(epoch, data, idx_train, idx_val, model, optimizer)
         print("Optimization Finished!")
-        print("Total time elapsed: {:.4f}s".format(time.time() - t_total))
+        print(
+            f"Time elapsed for experiment {i_exp}: {np.round(time.time() - t_total, 3)}s"
+        )
+
+        # Evaluate the model
         eva(data, idx_train, idx_test, model, args)
+        # store_results_df = eva(data, idx_train, idx_test, model, args)
+
+    #     # Append the results of the current experiment to the overall results
+    #     results_df = pd.concat([results_df, store_results_df], ignore_index=True)
+
+    # mean_pehe = np.round(np.mean(results_df["pehe_ts"]), 3)
+    # mean_mae = np.round(np.mean(results_df["mae_ate_ts"]), 3)
+
+    # # Calculate the mean PEHE and MAE of ATE across all experiments
+    # temp_df = pd.DataFrame(
+    #     {
+    #         "tr": args.tr,
+    #         "hidden": args.hidden,
+    #         "dropout": args.dropout,
+    #         "epochs": args.epochs,
+    #         "weight_decay": args.weight_decay,
+    #         "nout": args.nout,
+    #         "nin": args.nin,
+    #         "alpha": args.alpha,
+    #         "pehe_ts": mean_pehe,
+    #         "mae_ate_ts": mean_mae,
+    #     },
+    #     index=[0],
+    # )
+
+    # # Append the mean results to the overall mean results
+    # results_mean_df = pd.concat([results_mean_df, temp_df], ignore_index=True)
+
+    # # Save the results to a CSV file
+    # results_df.to_csv("./results.csv", index=False)
+    # results_mean_df.to_csv("./results_mean.csv", index=False)
+    print(f"Total time elapsed: {time.time() - final_time}s")
+
+    # Run all experiments
+    # bash run_for_share.sh
+
+    # Run for a single experiment
+    # python main.py --tr 0.6 --path ./datasets/ --dropout 0.1 --weight_decay 1e-5 --alpha 1e-4 --lr 1e-3 --epochs 200 --dataset BlogCatalog10s --norm 1 --nin 1 --nout 3 --hidden 200 --clip 100.

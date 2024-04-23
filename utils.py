@@ -10,14 +10,16 @@ from itertools import cycle
 
 from sklearn import svm, datasets
 from sklearn.metrics import roc_curve, auc
-from scipy import interp
+
+# from scipy import interp
 
 
-def sparse_mx_to_torch_sparse_tensor(sparse_mx,cuda=False):
+def sparse_mx_to_torch_sparse_tensor(sparse_mx, cuda=False):
     """Convert a scipy sparse matrix to a torch sparse tensor."""
     sparse_mx = sparse_mx.tocoo().astype(np.float32)
     indices = torch.from_numpy(
-        np.vstack((sparse_mx.row, sparse_mx.col)).astype(np.int64))
+        np.vstack((sparse_mx.row, sparse_mx.col)).astype(np.int64)
+    )
     values = torch.from_numpy(sparse_mx.data)
     shape = torch.Size(sparse_mx.shape)
 
@@ -26,34 +28,36 @@ def sparse_mx_to_torch_sparse_tensor(sparse_mx,cuda=False):
         sparse_tensor = sparse_tensor.cuda()
     return sparse_tensor
 
+
 def normalize(mx):
-	"""Row-normalize sparse matrix"""
-	rowsum = np.array(mx.sum(1))
-	r_inv = np.power(rowsum, -1).flatten()
-	r_inv[np.isinf(r_inv)] = 0.
-	r_mat_inv = sp.diags(r_inv)
-	mx = r_mat_inv.dot(mx)
-	return mx
+    """Row-normalize sparse matrix"""
+    rowsum = np.array(mx.sum(1))
+    r_inv = np.power(rowsum, -1).flatten()
+    r_inv[np.isinf(r_inv)] = 0.0
+    r_mat_inv = sp.diags(r_inv)
+    mx = r_mat_inv.dot(mx)
+    return mx
 
-def load_data(path, name='BlogCatalog',exp_id='0',original_X = False, extra_str=""):
-	data = sio.loadmat(path+name+extra_str+'/'+name+exp_id+'.mat')
-	A = data['Network'] #csr matrix
 
-	# try:
-	# 	A = np.array(A.todense())
-	# except:
-	# 	pass
+def load_data(path, name="BlogCatalog", exp_id="0", original_X=False):
+    data = sio.loadmat(path + name + "/" + name + exp_id + ".mat")
+    A = data["Network"]  # csr matrix
 
-	if not original_X:
-		X = data['X_100']
-	else:
-		X = data['Attributes']
+    # try:
+    # 	A = np.array(A.todense())
+    # except:
+    # 	pass
 
-	Y1 = data['Y1']
-	Y0 = data['Y0']
-	T = data['T']
+    if not original_X:
+        X = data["X_100"]
+    else:
+        X = data["Attributes"]
 
-	return X, A, T, Y1, Y0
+    Y1 = data["Y1"]
+    Y0 = data["Y0"]
+    T = data["T"]
+
+    return X, A, T, Y1, Y0
 
 
 def wasserstein(x, y, p=0.5, lam=10, its=10, sq=False, backpropT=False, cuda=False):
@@ -62,29 +66,47 @@ def wasserstein(x, y, p=0.5, lam=10, its=10, sq=False, backpropT=False, cuda=Fal
 
     nx = x.shape[0]
     ny = y.shape[0]
-    
+
     x = x.squeeze()
     y = y.squeeze()
-    
+
     M = pdist(x, y)  # Calculate pairwise distance matrix.
 
-    '''Estimate lambda and delta'''
+    """Estimate lambda and delta"""
     M_mean = torch.mean(M)
     M_drop = F.dropout(M, 10.0 / (nx * ny), training=False)
     delta = torch.max(M_drop).detach()
     eff_lam = (lam / M_mean).detach()
 
-    '''Compute new distance matrix with augmented row and column for slack variable'''
+    """Compute new distance matrix with augmented row and column for slack variable"""
     row = delta * torch.ones(M[0:1, :].shape, device=device)
-    col = torch.cat([delta * torch.ones(M[:, 0:1].shape, device=device), torch.zeros((1, 1), device=device)], 0)
+    col = torch.cat(
+        [
+            delta * torch.ones(M[:, 0:1].shape, device=device),
+            torch.zeros((1, 1), device=device),
+        ],
+        0,
+    )
     Mt = torch.cat([M, row], 0)
     Mt = torch.cat([Mt, col], 1)
 
-    '''Compute marginals'''
-    a = torch.cat([p * torch.ones((nx, 1), device=device) / nx, (1-p) * torch.ones((1, 1), device=device)], 0)
-    b = torch.cat([(1-p) * torch.ones((ny, 1), device=device) / ny, p * torch.ones((1, 1), device=device)], 0)
+    """Compute marginals"""
+    a = torch.cat(
+        [
+            p * torch.ones((nx, 1), device=device) / nx,
+            (1 - p) * torch.ones((1, 1), device=device),
+        ],
+        0,
+    )
+    b = torch.cat(
+        [
+            (1 - p) * torch.ones((ny, 1), device=device) / ny,
+            p * torch.ones((1, 1), device=device),
+        ],
+        0,
+    )
 
-    '''Compute kernel'''
+    """Compute kernel"""
     Mlam = eff_lam * Mt
     temp_term = torch.ones(1, device=device) * 1e-6
     K = torch.exp(-Mlam) + temp_term
@@ -97,12 +119,15 @@ def wasserstein(x, y, p=0.5, lam=10, its=10, sq=False, backpropT=False, cuda=Fal
         v = b / (K.t().matmul(u))
         u = a / (K.matmul(v))
 
-    '''Calculate the transport plan and distance'''
-    upper_t = u * (v.t() * K).detach()  # Correct matrix multiplication for computing the transport plan
+    """Calculate the transport plan and distance"""
+    upper_t = (
+        u * (v.t() * K).detach()
+    )  # Correct matrix multiplication for computing the transport plan
     E = upper_t * Mt
     D = 2 * torch.sum(E)  # Calculate the Wasserstein distance
 
     return D, Mlam
+
 
 def pdist(sample_1, sample_2, norm=2, eps=1e-5):
     """Compute the matrix of all squared pairwise distances.
@@ -121,11 +146,10 @@ def pdist(sample_1, sample_2, norm=2, eps=1e-5):
         ``|| sample_1[i, :] - sample_2[j, :] ||_p``."""
     n_1, n_2 = sample_1.size(0), sample_2.size(0)
     norm = float(norm)
-    if norm == 2.:
+    if norm == 2.0:
         norms_1 = torch.sum(sample_1**2, dim=1, keepdim=True)
         norms_2 = torch.sum(sample_2**2, dim=1, keepdim=True)
-        norms = (norms_1.expand(n_1, n_2) +
-                 norms_2.transpose(0, 1).expand(n_1, n_2))
+        norms = norms_1.expand(n_1, n_2) + norms_2.transpose(0, 1).expand(n_1, n_2)
         distances_squared = norms - 2 * sample_1.mm(sample_2.t())
         return torch.sqrt(eps + torch.abs(distances_squared))
     else:
@@ -134,7 +158,8 @@ def pdist(sample_1, sample_2, norm=2, eps=1e-5):
         expanded_2 = sample_2.unsqueeze(0).expand(n_1, n_2, dim)
         differences = torch.abs(expanded_1 - expanded_2) ** norm
         inner = torch.sum(differences, dim=2, keepdim=False)
-        return (eps + inner) ** (1. / norm)
+        return (eps + inner) ** (1.0 / norm)
+
 
 def convert_sparse_matrix_to_edge_list(sparse_mx):
     """
@@ -152,6 +177,7 @@ def convert_sparse_matrix_to_edge_list(sparse_mx):
     edge_weight = torch.from_numpy(sparse_mx.data.astype(np.float32))
 
     return edge_index, edge_weight
+
 
 # def sklearn_auc_score(t,ps):
 #     """
@@ -184,10 +210,10 @@ def convert_sparse_matrix_to_edge_list(sparse_mx):
 #     plt.ylabel('True Positive Rate')
 #     plt.title('Receiver operating characteristic example')
 #     plt.legend(loc="lower right")
-    # plt.show()
-    # plt.savefig('./figs/' + name + extra_str + str(exp_id) + 'ps_dist.pdf', bbox_inches='tight')
+# plt.show()
+# plt.savefig('./figs/' + name + extra_str + str(exp_id) + 'ps_dist.pdf', bbox_inches='tight')
 
-#def distance_matrix(x,y,p=2):
+# def distance_matrix(x,y,p=2):
 #    """ Computes the squared Euclidean distance between all pairs x in X, y in Y """
 #    x = x.squeeze()
 #    y = y.squeeze()
@@ -196,5 +222,3 @@ def convert_sparse_matrix_to_edge_list(sparse_mx):
 #    ny = torch.sum(y.pow(2),dim=1).view(-1,1)
 #    D = (C + torch.t(ny)) + nx
 #    return D
-
-
