@@ -12,7 +12,7 @@ do
 				do
 					for hid in 100 200 300 400 500
 					do
-    					python main.py --tr 0.6 --path ./datasets/ --dropout 0.1 --weight_decay $wd --alpha 1e-4 --lr $lr --epochs $epoch --dataset BlogCatalog10s --nin $i --nout $j --hidden $hid --clip 100.
+    					python main.py --tr 0.6 --path ./datasets/ --dropout 0.1 --weight_decay $wd --alpha 1e-4 --lr $lr --epochs $epoch --dataset BlogCatalog1 --nin $i --nout $j --hidden $hid --clip 100.
 					done
 				done
 			done
