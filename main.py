@@ -212,7 +212,9 @@ def eva(data, idx_train, idx_test, model, args):
     YF = torch.where(data.t > 0, data.y[:, 1], data.y[:, 0])
     YCF = torch.where(data.t > 0, data.y[:, 0], data.y[:, 1])
 
-    ym, ys = torch.mean(YF[idx_train]), torch.std(YF[idx_train]) # Mean and std of YF in the training set
+    ym, ys = torch.mean(YF[idx_train]), torch.std(
+        YF[idx_train]
+    )  # Mean and std of YF in the training set
 
     y1_pred, y0_pred = torch.where(data.t > 0, yf_pred, ycf_pred), torch.where(
         data.t > 0, ycf_pred, yf_pred
@@ -240,19 +242,6 @@ def eva(data, idx_train, idx_test, model, args):
         "pehe_ts= {:.4f}".format(pehe_ts.item()),
         "mae_ate_ts= {:.4f}".format(mae_ate_ts.item()),
     )
-
-    # store_results_dict["tr"] = args.tr
-    # store_results_dict["hidden"] = args.hidden
-    # store_results_dict["dropout"] = args.dropout
-    # store_results_dict["epochs"] = args.epochs
-    # store_results_dict["weight_decay"] = args.weight_decay
-    # store_results_dict["nout"] = args.nout
-    # store_results_dict["nin"] = args.nin
-    # store_results_dict["alpha"] = args.alpha
-    # store_results_dict["pehe_ts"] = pehe_ts.item()
-    # store_results_dict["mae_ate_ts"] = mae_ate_ts.item()
-
-    # store_results_df = pd.DataFrame(store_results_dict, index=[0])
 
     # Handle output file path and write results
     of_path = "./new_results/" + args.dataset + "/"
@@ -291,21 +280,6 @@ def eva(data, idx_train, idx_test, model, args):
 
 
 if __name__ == "__main__":
-    # results_df = pd.DataFrame(
-    #     columns=[
-    #         "tr",
-    #         "hidden",
-    #         "dropout",
-    #         "epochs",
-    #         "weight_decay",
-    #         "nout",
-    #         "nin",
-    #         "alpha",
-    #         "pehe_ts",
-    #         "mae_ate_ts",
-    #     ]
-    # )
-    # results_mean_df = results_df.copy()
 
     final_time = time.time()
 
@@ -323,37 +297,7 @@ if __name__ == "__main__":
 
         # Evaluate the model
         eva(data, idx_train, idx_test, model, args)
-        # store_results_df = eva(data, idx_train, idx_test, model, args)
 
-    #     # Append the results of the current experiment to the overall results
-    #     results_df = pd.concat([results_df, store_results_df], ignore_index=True)
-
-    # mean_pehe = np.round(np.mean(results_df["pehe_ts"]), 3)
-    # mean_mae = np.round(np.mean(results_df["mae_ate_ts"]), 3)
-
-    # # Calculate the mean PEHE and MAE of ATE across all experiments
-    # temp_df = pd.DataFrame(
-    #     {
-    #         "tr": args.tr,
-    #         "hidden": args.hidden,
-    #         "dropout": args.dropout,
-    #         "epochs": args.epochs,
-    #         "weight_decay": args.weight_decay,
-    #         "nout": args.nout,
-    #         "nin": args.nin,
-    #         "alpha": args.alpha,
-    #         "pehe_ts": mean_pehe,
-    #         "mae_ate_ts": mean_mae,
-    #     },
-    #     index=[0],
-    # )
-
-    # # Append the mean results to the overall mean results
-    # results_mean_df = pd.concat([results_mean_df, temp_df], ignore_index=True)
-
-    # # Save the results to a CSV file
-    # results_df.to_csv("./results.csv", index=False)
-    # results_mean_df.to_csv("./results_mean.csv", index=False)
     print(f"Total time elapsed: {time.time() - final_time}s")
 
     # Run all experiments
