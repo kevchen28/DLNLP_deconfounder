@@ -4,9 +4,9 @@ import torch.nn.functional as F
 from torch_geometric.nn import GCNConv
 
 
-class GCN_DECONF(nn.Module):
+class NetDeconf(nn.Module):
     def __init__(self, nfeat, nhid, dropout, n_in=1, n_out=1, cuda=False):
-        super(GCN_DECONF, self).__init__()
+        super(NetDeconf, self).__init__()
 
         device = torch.device("cuda" if cuda else "cpu")
 

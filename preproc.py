@@ -3,7 +3,6 @@ import numpy as np
 import random
 import matplotlib.pyplot as plt
 import pandas as pd
-from matplotlib import rc
 
 # visualize everything using tsne
 from sklearn.manifold import TSNE
@@ -11,9 +10,6 @@ from sklearn.manifold import TSNE
 from sklearn.decomposition import LatentDirichletAllocation
 from scipy import sparse
 
-font = {"weight": "bold", "size": 14}
-
-rc("font", **font)
 path = "./datasets/"
 name = "BlogCatalog"
 data = sio.loadmat(path + name + "/data.mat")
@@ -28,8 +24,6 @@ if kappa2 != 0.1:
 else:
     extra_str = ""
 
-data.keys()
-
 X = data["Attributes"]
 n = X.shape[0]
 X.tocoo()
@@ -39,7 +33,7 @@ A_dense = np.array(A.todense())
 
 LOW = 0.1
 
-Reweighted_Sparse_A = sparse.csr_matrix(A_dense)
+A_sparse = sparse.csr_matrix(A_dense)
 
 # get 50 topics
 lda = LatentDirichletAllocation(n_components=50)
@@ -53,10 +47,10 @@ AZ = np.matmul(A_dense, Z)
 
 ate_list = []
 
-# random sample an instance and use its topic distribution as the centroid
-for exp_id in range(0, 10):
-    centroid1_idx = random.randint(0, X.shape[0] - 1)
-    Z_c1 = Z[centroid1_idx, :]
+# repeat the experiment 10 times
+for exp_id in range(10):
+    centroid_idx = random.randint(0, X.shape[0] - 1)
+    Z_c1 = Z[centroid_idx, :]
     Z_c0 = np.mean(Z, axis=0)
     Z_c0 = np.mean(Z, axis=0)
 
@@ -66,7 +60,7 @@ for exp_id in range(0, 10):
     AZZ_c1 = np.matmul(AZ, Z_c1)
     AZZ_c0 = np.matmul(AZ, Z_c0)
 
-    # get propensity for each instance
+    # compute the propensity score
     p1 = kappa1 * ZZ_c1 + kappa2 * AZZ_c1
     p0 = kappa1 * ZZ_c0 + kappa2 * AZZ_c0
     propensity = np.divide(np.exp(p1), np.exp(p1) + np.exp(p0))
@@ -143,8 +137,8 @@ for exp_id in range(0, 10):
         color="yellow",
     )
     ax3.scatter(
-        Z_[centroid1_idx, 0],
-        Z_[centroid1_idx, 1],
+        Z_[centroid_idx, 0],
+        Z_[centroid_idx, 1],
         100,
         label=r"$z_1^c$",
         marker="D",
@@ -177,7 +171,7 @@ for exp_id in range(0, 10):
             "Attributes": data["Attributes"],
             "Label": data["Label"],
             "Network": data["Network"],
-            "Weighted_Network": Reweighted_Sparse_A,
+            "Weighted_Network": A_sparse,
             "Propensity": propensity,
             "ITE": Y1 - Y0,
         },

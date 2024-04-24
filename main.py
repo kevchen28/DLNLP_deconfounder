@@ -4,7 +4,7 @@ import numpy as np
 import torch
 import torch.optim as optim
 from torch_geometric.data import Data
-from models.netdeconf import GCN_DECONF
+from models.netdeconf import NetDeconf
 import utils
 import csv
 import os
@@ -18,7 +18,7 @@ parser.add_argument("--seed", type=int, default=42, help="Random seed.")
 parser.add_argument(
     "--epochs", type=int, default=200, help="Number of epochs to train."
 )
-parser.add_argument("--lr", type=float, default=1e-2, help="Initial learning rate.")
+parser.add_argument("--lr", type=float, default=1e-2, help="Learning rate.")
 parser.add_argument(
     "--weight_decay",
     type=float,
@@ -114,7 +114,7 @@ def prepare(i_exp):
     )
 
     # Initialize the model and optimizer
-    model = GCN_DECONF(
+    model = NetDeconf(
         nfeat=X.shape[1],
         nhid=args.hidden,
         dropout=args.dropout,
@@ -152,24 +152,28 @@ def train(epoch, data, idx_train, idx_val, model, optimizer):
 
     # Calculate the Wasserstein distance between the representations of treated and control units
     rep_t1, rep_t0 = (
-        rep[idx_train][(data.t[idx_train] > 0).nonzero(as_tuple=True)],
-        rep[idx_train][(data.t[idx_train] < 1).nonzero(as_tuple=True)],
+        rep[idx_train][(data.t[idx_train] > 0).nonzero(as_tuple=True)],  # treated units
+        rep[idx_train][(data.t[idx_train] < 1).nonzero(as_tuple=True)],  # control units
     )
-    dist = utils.wasserstein(rep_t1, rep_t0)
+    dist = utils.wasserstein(rep_t1, rep_t0)  # Wasserstein distance
 
     YF = torch.where(data.t > 0, data.y[:, 0], data.y[:, 1])  # Factual outcomes
 
     # Normalize the outcomes if required
     if args.norm:
-        ym, ys = torch.mean(YF[idx_train]), torch.std(YF[idx_train])
-        YFtr, YFva = (YF[idx_train] - ym) / ys, (YF[idx_val] - ym) / ys
+        ym, ys = torch.mean(YF[idx_train]), torch.std(
+            YF[idx_train]
+        )  # Mean and std of YF in the training set
+        YFtr, YFva = (YF[idx_train] - ym) / ys, (
+            YF[idx_val] - ym
+        ) / ys  # Normalized outcomes
     else:
-        YFtr = YF[idx_train]
-        YFva = YF[idx_val]
+        YFtr = YF[idx_train]  # Unnormalized outcomes
+        YFva = YF[idx_val]  # Unnormalized outcomes
 
     # Calculate the loss
-    loss_train = loss(yf_pred[idx_train], YFtr) + alpha * dist
-    torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip)
+    loss_train = loss(yf_pred[idx_train], YFtr) + alpha * dist  # Loss function
+    torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip)  # Clip the gradients
     loss_train.backward()
     optimizer.step()
 
