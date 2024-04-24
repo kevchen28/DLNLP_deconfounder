@@ -315,4 +315,4 @@ if __name__ == "__main__":
     # bash run_for_share.sh
 
     # Run for a single experiment
-    # python main.py --tr 0.6 --path ./datasets/ --dropout 0.1 --weight_decay 1e-5 --alpha 1e-4 --lr 1e-3 --epochs 200 --dataset BlogCatalog1 --nin 1 --nout 3 --hidden 200 --clip 100.
+    # python main.py --tr 0.6 --path ./datasets/ --dropout 0.1 --weight_decay 1e-5 --alpha 1e-4 --lr 1e-3 --epochs 200 --dataset BlogCatalog0.5 --nin 2 --nout 3 --hidden 200 --clip 100.
