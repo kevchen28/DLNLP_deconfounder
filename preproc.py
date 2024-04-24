@@ -3,6 +3,8 @@ import numpy as np
 import random
 import matplotlib.pyplot as plt
 import pandas as pd
+import os
+import argparse
 
 # visualize everything using tsne
 from sklearn.manifold import TSNE
@@ -14,9 +16,13 @@ path = "./datasets/"
 name = "BlogCatalog"
 data = sio.loadmat(path + name + "/data.mat")
 
+parser = argparse.ArgumentParser()
+parser.add_argument("-k", "--kappa2", type=float, required=True, default=1, help="kappa2")
+args = parser.parse_args()
+
 # setting constants
 kappa1 = 10
-kappa2 = 1
+kappa2 = args.kappa2
 C = 5
 
 if kappa2 != 0.1:
@@ -102,6 +108,7 @@ for exp_id in range(10):
         "./figs/" + name + extra_str + str(exp_id) + "outcome_dist.pdf",
         bbox_inches="tight",
     )
+    plt.close()
 
     # distribution of ITE
     fig2, ax2 = plt.subplots()
@@ -114,8 +121,9 @@ for exp_id in range(10):
         "./figs/" + name + extra_str + str(exp_id) + "ite_dist.pdf", bbox_inches="tight"
     )
     ax2.legend()
+    plt.close()
 
-    print("ATE is %.3f" % (np.mean(Y1 - Y0)))
+    print("ATE for experiment %.0f is %.3f" % (exp_id + 1, np.mean(Y1 - Y0)))
     ate_list.append(np.mean(Y1 - Y0))
 
     # save the data
@@ -147,6 +155,7 @@ for exp_id in range(10):
     plt.savefig("./figs/" + name + extra_str + "tsne.pdf", bbox_inches="tight")
     plt.legend(loc=2)
     plt.xlim(-100, 100)
+    plt.close()
 
     # get the most freq 100 words of each topic
     topics = lda.components_
@@ -159,6 +168,9 @@ for exp_id in range(10):
 
     # reduce the dimensions by extract the selected words
     X_100 = X[:, unique_100_dims]
+
+    if not os.path.exists("./datasets/" + name + extra_str):
+        os.makedirs("./datasets/" + name + extra_str)
 
     # save the data
     sio.savemat(
