@@ -16,6 +16,10 @@ Original paper - [Learning Individual Causal Effects from Networked Observationa
 
 ### Dependencies
 
+<<<<<<< HEAD
+=======
+
+>>>>>>> 2dcd64293f75f88d2311fda118a6b6603faf63a0
 ```
 Python 3.11.8
 Pytorch 2.2.1
