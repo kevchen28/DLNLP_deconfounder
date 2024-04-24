@@ -155,7 +155,7 @@ def train(epoch, data, idx_train, idx_val, model, optimizer):
         rep[idx_train][(data.t[idx_train] > 0).nonzero(as_tuple=True)],
         rep[idx_train][(data.t[idx_train] < 1).nonzero(as_tuple=True)],
     )
-    dist = utils.wasserstein(rep_t1, rep_t0, cuda=args.cuda)
+    dist = utils.wasserstein(rep_t1, rep_t0)
 
     YF = torch.where(data.t > 0, data.y[:, 0], data.y[:, 1])  # Factual outcomes
 

@@ -183,6 +183,61 @@ def pdist(sample_1, sample_2, norm=2, eps=1e-5):
         return (eps + inner) ** (1.0 / norm)  # Return the pairwise distances
 
 
+# Function to compute the RBF kernel between two datasets
+def rbf_kernel(x, y, gamma=None):
+    """
+    Function to compute the RBF kernel between two datasets.
+
+    Args:
+        x (torch.Tensor): The first distribution (a batch of distributions)
+        y (torch.Tensor): The second distribution (a batch of distributions)
+        gamma (float, optional): The gamma parameter of the RBF kernel. Defaults to None.
+
+    Returns:
+        torch.Tensor: The RBF kernel matrix between the two datasets.
+    """
+    # Compute pairwise squared Euclidean distances between x and y
+    x_sq = torch.sum(x**2, dim=1, keepdim=True)
+    y_sq = torch.sum(y**2, dim=1, keepdim=True)
+    xy_sq = torch.mm(x, y.t())
+    dist_sq = x_sq - 2 * xy_sq + y_sq.t()
+
+    if gamma is None:
+        gamma = 1 / (2 * torch.mean(dist_sq))
+
+    return torch.exp(-gamma * dist_sq)
+
+
+# Function to compute the Maximum Mean Discrepancy (MMD)
+def mmd(x, y, kernel=rbf_kernel):
+    """
+    Function to compute the Maximum Mean Discrepancy (MMD).
+
+    Args:
+        x (torch.Tensor): The first distribution (a batch of distributions)
+        y (torch.Tensor): The second distribution (a batch of distributions)
+        kernel (function, optional): The kernel function to use. Defaults to rbf_kernel.
+
+    Returns:
+        torch.Tensor: The Maximum Mean Discrepancy (MMD) between the two distributions.
+    """
+    # Compute kernel matrices for x and y
+    K_xx = kernel(x, x)
+    K_yy = kernel(y, y)
+    K_xy = kernel(x, y)
+
+    # Get the sizes of x and y
+    nx = x.size(0)
+    ny = y.size(0)
+
+    # Compute MMD
+    mmd_val = (1 / (nx * (nx - 1))) * (torch.sum(K_xx) - torch.trace(K_xx))
+    mmd_val += (1 / (ny * (ny - 1))) * (torch.sum(K_yy) - torch.trace(K_yy))
+    mmd_val -= (2 / (nx * ny)) * torch.sum(K_xy)
+
+    return mmd_val
+
+
 def convert_sparse_matrix_to_edge_list(sparse_mx):
     """
     Convert a scipy.sparse matrix to torch_geometric edge list format.
@@ -193,9 +248,17 @@ def convert_sparse_matrix_to_edge_list(sparse_mx):
         edge_weight (torch.FloatTensor): The edge weights tensor of shape [num_edges].
     """
     sparse_mx = sparse_mx.tocoo()  # Convert to COOrdinate format
-    row = torch.from_numpy(sparse_mx.row.astype(np.int64))
-    col = torch.from_numpy(sparse_mx.col.astype(np.int64))
-    edge_index = torch.stack([row, col], dim=0)
-    edge_weight = torch.from_numpy(sparse_mx.data.astype(np.float32))
+    row = torch.from_numpy(
+        sparse_mx.row.astype(np.int64)
+    )  # Convert row indices to tensor
+    col = torch.from_numpy(
+        sparse_mx.col.astype(np.int64)
+    )  # Convert column indices to tensor
+    edge_index = torch.stack(
+        [row, col], dim=0
+    )  # Stack row and column indices to create edge index tensor
+    edge_weight = torch.from_numpy(
+        sparse_mx.data.astype(np.float32)
+    )  # Convert data to tensor
 
     return edge_index, edge_weight

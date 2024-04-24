@@ -2,7 +2,7 @@
 
 for i in 1 2
 do
-	for j in 1 2 3
+	for j in 2 3
 	do
 		for lr in 1e-2 1e-3
 		do
