@@ -38,6 +38,7 @@ parser.add_argument("--nin", type=int, default=2, help="Number of input layers."
 parser.add_argument("--tr", type=float, default=0.6, help="train ratio.")
 parser.add_argument("--path", type=str, default="./datasets/")
 parser.add_argument("--norm", type=bool, default=True, help="Normalize the outcomes.")
+parser.add_argument("--ipm", type=str, default="wasserstein", help="IPM metric.")
 
 args = parser.parse_args()
 args.cuda = not args.nocuda and torch.cuda.is_available()
@@ -155,7 +156,11 @@ def train(epoch, data, idx_train, idx_val, model, optimizer):
         rep[idx_train][(data.t[idx_train] > 0).nonzero(as_tuple=True)],  # treated units
         rep[idx_train][(data.t[idx_train] < 1).nonzero(as_tuple=True)],  # control units
     )
-    dist = utils.wasserstein(rep_t1, rep_t0)  # Wasserstein distance
+    
+    if args.ipm == "wasserstein":
+        dist = utils.wasserstein(rep_t1, rep_t0)  # Wasserstein distance
+    elif args.ipm == "mmd":
+        dist = utils.mmd(rep_t1, rep_t0) # Maximum Mean Discrepancy (MMD) distance
 
     YF = torch.where(data.t > 0, data.y[:, 0], data.y[:, 1])  # Factual outcomes
 
@@ -266,6 +271,7 @@ def eva(data, idx_train, idx_test, model, args):
         + ("_nin" + str(args.nin))
         + ("_nout" + str(args.nout))
         + ("_alp" + str(args.alpha))
+        + ("_ipm" + str(args.ipm))
         + ".csv"
     )
 
@@ -284,6 +290,7 @@ def eva(data, idx_train, idx_test, model, args):
                 args.nin,
                 args.nout,
                 args.alpha,
+                args.ipm,
                 pehe_ts.item(),
                 mae_ate_ts.item(),
             ]
