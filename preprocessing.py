@@ -10,7 +10,6 @@ import argparse
 from sklearn.manifold import TSNE
 
 from sklearn.decomposition import LatentDirichletAllocation
-from scipy import sparse
 
 path = "./datasets/"
 name = "BlogCatalog"
@@ -32,24 +31,16 @@ else:
 
 X = data["Attributes"]
 n = X.shape[0]
-X.tocoo()
 
 A = data["Network"]
 A_dense = np.array(A.todense())
-
-LOW = 0.1
-
-A_sparse = sparse.csr_matrix(A_dense)
 
 # get 50 topics
 lda = LatentDirichletAllocation(n_components=50)
 lda.fit(X)
 
-Z = lda.transform(X)
-
-AZ = np.matmul(A_dense, Z)
-Z = lda.transform(X)
-AZ = np.matmul(A_dense, Z)
+Z = lda.transform(X) # get the topic distribution of each instance
+AZ = np.matmul(A_dense, Z) # Multiply the adjacency matrix with the topic distribution matrix
 
 ate_list = []
 
@@ -57,7 +48,6 @@ ate_list = []
 for exp_id in range(10):
     centroid_idx = random.randint(0, X.shape[0] - 1)
     Z_c1 = Z[centroid_idx, :]
-    Z_c0 = np.mean(Z, axis=0)
     Z_c0 = np.mean(Z, axis=0)
 
     # precompute the similarity between each instance and the two centroids
@@ -70,12 +60,10 @@ for exp_id in range(10):
     p1 = kappa1 * ZZ_c1 + kappa2 * AZZ_c1
     p0 = kappa1 * ZZ_c0 + kappa2 * AZZ_c0
     propensity = np.divide(np.exp(p1), np.exp(p1) + np.exp(p0))
-    ps = pd.Series(np.squeeze(propensity))
-    ps.describe()
 
     # visualize the propensity distribution
     ps = pd.Series(np.squeeze(propensity))
-    ps.describe()
+    print(f'Propensity score distribution for experiment {exp_id + 1}: {ps.describe()}')
 
     # visualize the propensity distribution
     fig0, ax0 = plt.subplots()
@@ -86,19 +74,18 @@ for exp_id in range(10):
     plt.savefig(
         "./figs/" + name + extra_str + str(exp_id) + "ps_dist.pdf", bbox_inches="tight"
     )
+    plt.close()
 
     # simulate treatments
-    T = np.random.binomial(1, p=propensity)
-
-    # sample noise from Gaussian
-    epsilon = np.random.normal(0, 1, X.shape[0])
+    T = np.random.binomial(1, p=propensity) # Randomly assign treatment based on propensity score
 
     # sample noise from Gaussian
     epsilon = np.random.normal(0, 1, X.shape[0])
 
     # simulate outcomes
-    Y1 = C * (p1 + p0) + epsilon
-    Y0 = C * (p0) + epsilon
+    Y1 = C * (p1 + p0) + epsilon # Factual outcome
+    Y0 = C * (p0) + epsilon # Counterfactual outcome
+    
     fig1, ax1 = plt.subplots()
     ax1.hist(Y1, bins=50, label="Treated")
     ax1.hist(Y0, bins=50, label="Control")
@@ -160,13 +147,13 @@ for exp_id in range(10):
     # get the most freq 100 words of each topic
     topics = lda.components_
 
-    # calculate the topic 100 words in each topic
+    # get the top 100 words of each topic
     topics_100_dims = np.argsort(topics, axis=1)[:, -100:]
 
-    # then we get a union of all those top 100 words
+    # get the unique words
     unique_100_dims = np.unique(topics_100_dims)
 
-    # reduce the dimensions by extract the selected words
+    # reduce the dimensionality of X by selecting the top 100 words of each topic
     X_100 = X[:, unique_100_dims]
 
     if not os.path.exists("./datasets/" + name + extra_str):
@@ -183,7 +170,6 @@ for exp_id in range(10):
             "Attributes": data["Attributes"],
             "Label": data["Label"],
             "Network": data["Network"],
-            "Weighted_Network": A_sparse,
             "Propensity": propensity,
             "ITE": Y1 - Y0,
         },
