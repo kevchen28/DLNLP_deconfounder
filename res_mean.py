@@ -36,6 +36,7 @@ if __name__ == "__main__":
             "nin",
             "nout",
             "alpha",
+            "ipm",
             "mean_pehe",
             "mean_mae_ate",
         ]
@@ -55,6 +56,7 @@ if __name__ == "__main__":
         nin = df.iloc[0, 5]
         nout = df.iloc[0, 6]
         alpha = df.iloc[0, 7]
+        ipm = df.iloc[0, 8]
 
         temp_df = pd.DataFrame(
             {
@@ -65,6 +67,7 @@ if __name__ == "__main__":
                 "nin": nin,
                 "nout": nout,
                 "alpha": alpha,
+                "ipm": ipm,
                 "mean_pehe": mean_pehe,
                 "mean_mae_ate": mean_mae_ate,
             },
@@ -74,3 +77,6 @@ if __name__ == "__main__":
 
     # Save the dataframe to a csv file
     experiments_df.to_csv(os.path.join(args.output, "experiments.csv"), index=False)
+    
+    # Code to run this script
+    # python res_mean.py -d new_results/BlogCatalog2 -o new_results/BlogCatalog2
